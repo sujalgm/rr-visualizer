@@ -63,7 +63,7 @@ This ensures **fair CPU time distribution** among all processes.
 ---
 
 ### Credits
-Developed by Sujal G M (23BCT0058)  
+Developed by Sujal G M   
 B.Tech — Computer Science and Engineering (IoT)  
 VIT Vellore  
 
