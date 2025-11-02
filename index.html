@@ -1,92 +1,229 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Round Robin CPU Scheduling Visualizer</title>
-  <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Round Robin CPU Scheduling — Interactive Visualizer</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* --- Quick Style Definitions --- */
+    body {
+      font-family: "Segoe UI", sans-serif;
+      background-color: #050b1f;
+      color: #cdd5ff;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100vh;
+    }
+
+    h1 {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 22px;
+      color: #e0e7ff;
+    }
+
+    #main {
+      display: flex;
+      flex-direction: row;
+      justify-content: center;
+      margin-top: 25px;
+      width: 95%;
+      max-width: 1300px;
+      gap: 24px;
+    }
+
+    /* Left Panel (Inputs + Controls) */
+    #input-panel {
+      background: #0a112f;
+      border-radius: 14px;
+      padding: 20px;
+      width: 270px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.4);
+    }
+
+    label {
+      display: block;
+      margin-top: 10px;
+      font-weight: 500;
+    }
+
+    input, select, button {
+      margin-top: 6px;
+      margin-bottom: 10px;
+      border-radius: 6px;
+      border: none;
+      padding: 6px 10px;
+      font-size: 14px;
+    }
+
+    button {
+      background-color: #1e3aff;
+      color: white;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    button:hover {
+      background-color: #4258ff;
+    }
+
+    #table-container {
+      margin-top: 10px;
+      max-height: 150px;
+      overflow-y: auto;
+      border-top: 1px solid #2d3666;
+      padding-top: 5px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: center;
+    }
+
+    th, td {
+      padding: 4px;
+    }
+
+    th {
+      color: #9faaff;
+      font-weight: 600;
+      border-bottom: 1px solid #2c3470;
+    }
+
+    td[contenteditable="true"] {
+      background-color: #151b45;
+    }
+
+    /* Right Panel (Canvas + Stats) */
+    #canvas-panel {
+      flex: 1;
+      background: #0a112f;
+      border-radius: 14px;
+      padding: 20px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.4);
+    }
+
+    #stage {
+      background-color: #0b1028;
+      border: 1px solid #20285e;
+      border-radius: 12px;
+      width: 100%;
+      height: 220px;
+    }
+
+    #controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 15px;
+    }
+
+    #stats {
+      margin-top: 20px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    pre {
+      background: #0b112d;
+      padding: 8px;
+      border-radius: 8px;
+      font-size: 12px;
+      height: 100px;
+      overflow-y: auto;
+    }
+  </style>
 </head>
 
 <body>
-  <!-- ==============================
-       MAIN LAYOUT: TWO SECTIONS
-       ============================== -->
-  <main>
-    <!-- LEFT PANEL: USER INPUT & CONTROLS -->
-    <section class="left">
-      <div class="card">
-        <h2>Input</h2>
-        <div class="body">
-          <!-- User sets time quantum and animation speed -->
-          <label>Time Quantum (ms)</label>
-          <input id="quantum" type="number" value="4" min="1">
+  <h1>Round Robin CPU Scheduling — Interactive Visualizer</h1>
 
-          <label>Animation Speed</label>
-          <select id="speed">
-            <option value="1">1×</option>
-            <option value="2">2×</option>
-            <option value="4">4×</option>
-          </select>
+  <div id="main">
 
-          <!-- Basic input buttons -->
-          <div style="margin-top:8px">
-            <button id="btnAdd">+ Add Process</button>
-            <button id="btnClear">Clear</button>
-            <button id="btnBuild">Build Schedule</button>
-          </div>
-        </div>
+    <!-- ============================================= -->
+    <!-- LEFT PANEL: INPUTS + TABLE + BUTTONS -->
+    <!-- ============================================= -->
+    <div id="input-panel">
+      <h3>Input</h3>
+
+      <!-- Time Quantum and Animation Speed -->
+      <label for="tq">Time Quantum (ms)</label>
+      <input id="tq" type="number" value="4" min="1" />
+
+      <label for="speed">Animation Speed</label>
+      <select id="speed">
+        <option value="1">1×</option>
+        <option value="2">2×</option>
+        <option value="3">3×</option>
+      </select>
+
+      <!-- Buttons for Processes -->
+      <div>
+        <button id="btnAdd">+ Add Process</button>
+        <button id="btnClear">Clear</button>
+        <button id="btnBuild">Build Schedule</button>
       </div>
 
-      <!-- Process Table (editable) -->
-      <div class="card">
-        <table id="procTable">
+      <!-- Process Table -->
+      <div id="table-container">
+        <table>
           <thead>
-            <tr><th>PID</th><th>Arrival</th><th>Burst</th><th>Priority</th></tr>
+            <tr>
+              <th>PID</th>
+              <th>Arrival</th>
+              <th>Burst</th>
+              <th>Priority</th>
+            </tr>
           </thead>
           <tbody></tbody>
         </table>
       </div>
 
-      <!-- Playback Controls -->
-      <div class="card controls">
-        <button id="btnPlay">▶ Play</button>
-        <button id="btnPause">⏸ Pause</button>
-        <button id="btnStep">⏭ Step</button>
-        <button id="btnBack">⏮ Back</button>
-        <button id="btnReset">↺ Reset</button>
-        <button id="btnExportPNG">📷 Export Screenshot</button>
-        <button id="btnExportCSV">⬇ Export Trace</button>
+      <!-- Play Controls -->
+     	<div id="controls">
+  		<button id="btnPlay">▶ Play</button>
+  		<button id="btnPause">⏸ Pause</button>
+  		<button id="btnStep">⏭ Step</button>
+  		<button id="btnBack">⏮ Step Back</button>
+  		<button id="btnReset">↻ Reset</button>
+	</div>
+
+
+      <!-- Export Buttons -->
+      <div id="controls">
+        <button id="btnExportPNG">🖼 Export Screenshot</button>
+        <button id="btnExportCSV">📄 Export Trace</button>
       </div>
-    </section>
+    </div>
 
-    <!-- RIGHT PANEL: VISUALIZATION + STATS -->
-    <section class="viz">
-      <div class="card">
-        <h2>CPU • Ready Queue • Gantt</h2>
-        <canvas id="stage" width="1200" height="380"></canvas>
-        <div class="muted">Build schedule, then Play or Step.</div>
+    <!-- ============================================= -->
+    <!-- RIGHT PANEL: CANVAS + STATS + LOGS -->
+    <!-- ============================================= -->
+    <div id="canvas-panel">
+      <canvas id="stage" width="1200" height="300"></canvas>
+
+      <div id="stats">
+        <h3>Statistics</h3>
+        <div>Avg Waiting Time: <span id="statAWT">—</span></div>
+        <div>Avg Turnaround Time: <span id="statATAT">—</span></div>
+        <div>Throughput: <span id="statTH">—</span></div>
+        <div>CPU Utilization: <span id="statCPU">—</span></div>
       </div>
 
-      <!-- Live statistics -->
-      <div class="card">
-        <h2>Statistics</h2>
-        <div class="stat">Avg Waiting: <b id="statAWT">—</b></div>
-        <div class="stat">Avg Turnaround: <b id="statATAT">—</b></div>
-        <div class="stat">Throughput: <b id="statTH">—</b></div>
-        <div class="stat">CPU Utilization: <b id="statCPU">—</b></div>
-      </div>
+      <h3>Event Log</h3>
+      <pre id="log"></pre>
+    </div>
+  </div>
 
-      <!-- Log of events -->
-      <div class="card">
-        <h2>Execution Timeline</h2>
-        <div id="log" class="muted"></div>
-      </div>
-    </section>
-  </main>
-
-  <footer>Round Robin Visualization • Works offline in all modern browsers</footer>
-
-  <!-- JavaScript modules -->
+  <!-- ============================================= -->
+  <!-- SCRIPT LINKS -->
+  <!-- ============================================= -->
   <script type="module" src="./js/app.js"></script>
 </body>
 </html>
