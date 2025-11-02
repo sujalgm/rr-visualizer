@@ -1,25 +1,30 @@
-// =========================================================
-// Round Robin CPU Scheduling Visualizer (Stable Version)
-// =========================================================
+// =======================================================
+// app.js — Round Robin CPU Scheduling Visualizer
+// =======================================================
+// Handles UI controls, animation loop, drawing, and interaction
+// =======================================================
 
-// --- Utility ---
+// --- Import scheduling functions from algorithms.js ---
+import { addRow, computeStats } from './algorithms.js';
+
+// --- Utility function for accessing elements ---
 function byId(id) {
   return document.getElementById(id);
 }
 
-// --- Canvas setup ---
+// --- Canvas and state variables ---
 const canvas = byId("stage");
 const ctx = canvas.getContext("2d");
-
-// --- State variables ---
 let playing = false;
 let rafId = null;
 let state = null;
+
+// --- Table reference (for process rows) ---
 const tableBody = document.querySelector("table tbody");
 
-// =========================================================
-// Initialize the simulation
-// =========================================================
+// =======================================================
+// Initialize / Reset Simulation
+// =======================================================
 function initEngine() {
   const rows = tableBody.querySelectorAll("tr");
   const processes = [];
@@ -57,13 +62,13 @@ function initEngine() {
   updateStats();
 }
 
-// =========================================================
-// Perform a single tick
-// =========================================================
+// =======================================================
+// CPU Tick (step-by-step simulation)
+// =======================================================
 function stepTick(state) {
   state.clock++;
 
-  // Add newly arrived processes
+  // Move newly arrived processes into queue
   state.processes.forEach(p => {
     if (p.arrival === state.clock && !state.readyQ.includes(p) && p.remaining > 0) {
       state.readyQ.push(p);
@@ -71,7 +76,7 @@ function stepTick(state) {
     }
   });
 
-  // If CPU is idle, take next process
+  // If CPU idle, pick next
   if (!state.running && state.readyQ.length > 0) {
     state.running = state.readyQ.shift();
     state.running.quantumLeft = state.tq;
@@ -91,7 +96,7 @@ function stepTick(state) {
         start: state.running.startTime,
         end: state.running.endTime
       });
-      logMsg(`✅ Process ${state.running.pid} finished`);
+      logMsg(`✅ ${state.running.pid} finished`);
       state.running = null;
     } else if (state.running.quantumLeft <= 0) {
       logMsg(`🔁 Quantum expired for ${state.running.pid}`);
@@ -100,9 +105,8 @@ function stepTick(state) {
     }
   }
 
-  // --- STOP CONDITION ---
-  const allDone = state.processes.every(p => p.remaining <= 0);
-  if (allDone) {
+  // Stop if all done
+  if (state.processes.every(p => p.remaining <= 0)) {
     playing = false;
     cancelAnimationFrame(rafId);
     updateStats();
@@ -110,23 +114,20 @@ function stepTick(state) {
   }
 }
 
-// =========================================================
-// Animation loop
-// =========================================================
+// =======================================================
+// Play / Animation Loop
+// =======================================================
 function playLoop() {
   if (!state || !playing) return;
   stepTick(state);
   draw();
   updateStats();
-
-  if (playing) {
-    rafId = requestAnimationFrame(playLoop);
-  }
+  if (playing) rafId = requestAnimationFrame(playLoop);
 }
 
-// =========================================================
-// Drawing functions
-// =========================================================
+// =======================================================
+// Drawing Functions
+// =======================================================
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawGantt();
@@ -143,7 +144,7 @@ function drawGantt() {
 
   ctx.strokeStyle = "#19234f";
   ctx.lineWidth = 1;
-  for (let t = 0; t <= maxT; t += 1) {
+  for (let t = 0; t <= maxT; t++) {
     const x = chartX + (t / maxT) * chartW;
     ctx.beginPath();
     ctx.moveTo(x, chartY);
@@ -164,55 +165,35 @@ function drawGantt() {
   text(`Clock: ${state.clock}`, baseX + 10, baseY + h + 30, 14, "#9fb0ff");
 }
 
-// =========================================================
-// Stats and logs
-// =========================================================
+// =======================================================
+// Stats, Logging, Helpers
+// =======================================================
 function totalBurst() {
   return state.processes.reduce((s, p) => s + p.burst, 0);
 }
 function maxArrival() {
   return Math.max(...state.processes.map(p => p.arrival));
 }
-
 function updateStats() {
-  const done = state.processes.filter(p => p.remaining <= 0);
-  if (done.length === 0) return;
-
-  const totalTurnaround = done.reduce((s, p) => s + (p.endTime - p.arrival), 0);
-  const totalWaiting = done.reduce((s, p) => s + (p.endTime - p.arrival - p.burst), 0);
-  const awt = totalWaiting / done.length;
-  const atat = totalTurnaround / done.length;
-  const throughput = done.length / state.clock;
-  const cpuUtil = (totalBurst() / state.clock) * 100;
-
-  byId("statAWT").textContent = awt.toFixed(2);
-  byId("statATAT").textContent = atat.toFixed(2);
-  byId("statTH").textContent = throughput.toFixed(2) + "/t";
-  byId("statCPU").textContent = cpuUtil.toFixed(1) + "%";
+  const s = computeStats(state);
+  byId("statAWT").textContent = s.awt.toFixed(2);
+  byId("statATAT").textContent = s.atat.toFixed(2);
+  byId("statTH").textContent = s.throughput.toFixed(2) + "/t";
+  byId("statCPU").textContent = s.cpuUtil.toFixed(1) + "%";
 }
-
 function logMsg(msg) {
   const box = byId("log");
   box.textContent += `t=${state.clock}: ${msg}\n`;
   box.scrollTop = box.scrollHeight;
 }
-
-// =========================================================
-// Drawing helpers
-// =========================================================
 function roundRect(c, x, y, w, h, r, fill, stroke) {
-  c.fillStyle = fill;
-  c.strokeStyle = stroke;
-  c.lineWidth = 1;
-  c.beginPath();
-  c.moveTo(x + r, y);
+  c.fillStyle = fill; c.strokeStyle = stroke; c.lineWidth = 1;
+  c.beginPath(); c.moveTo(x + r, y);
   c.arcTo(x + w, y, x + w, y + h, r);
   c.arcTo(x + w, y + h, x, y + h, r);
   c.arcTo(x, y + h, x, y, r);
   c.arcTo(x, y, x + w, y, r);
-  c.closePath();
-  c.fill();
-  c.stroke();
+  c.closePath(); c.fill(); c.stroke();
 }
 function text(t, x, y, size, color) {
   ctx.fillStyle = color;
@@ -221,46 +202,24 @@ function text(t, x, y, size, color) {
 }
 function shade(hex, amt) {
   const c = parseInt(hex.slice(1), 16),
-    r = (c >> 16) & 255,
-    g = (c >> 8) & 255,
-    b = c & 255;
+    r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
   const fn = v => Math.max(0, Math.min(255, Math.round(v + amt * 255)));
   return `rgb(${fn(r)},${fn(g)},${fn(b)})`;
 }
 
-// =========================================================
+// =======================================================
 // Button Bindings
-// =========================================================
+// =======================================================
 byId("btnAdd").addEventListener("click", () => {
   const n = tableBody.querySelectorAll("tr").length;
   addRow(`P${n + 1}`, n * 2, 5, 1);
 });
-byId("btnClear").addEventListener("click", () => {
-  tableBody.innerHTML = "";
-});
-byId("btnBuild").addEventListener("click", () => {
-  initEngine();
-});
-byId("btnPlay").addEventListener("click", () => {
-  if (!state) return;
-  playing = true;
-  playLoop();
-});
-byId("btnPause").addEventListener("click", () => {
-  playing = false;
-  cancelAnimationFrame(rafId);
-});
-byId("btnStep").addEventListener("click", () => {
-  playing = false;
-  if (!state) return;
-  stepTick(state);
-  draw();
-  updateStats();
-});
-byId("btnReset").addEventListener("click", () => {
-  playing = false;
-  initEngine();
-});
+byId("btnClear").addEventListener("click", () => { tableBody.innerHTML = ""; });
+byId("btnBuild").addEventListener("click", initEngine);
+byId("btnPlay").addEventListener("click", () => { if (!state) return; playing = true; playLoop(); });
+byId("btnPause").addEventListener("click", () => { playing = false; cancelAnimationFrame(rafId); });
+byId("btnStep").addEventListener("click", () => { playing = false; if (!state) return; stepTick(state); draw(); updateStats(); });
+byId("btnReset").addEventListener("click", initEngine);
 byId("btnExportPNG").addEventListener("click", () => {
   const a = document.createElement("a");
   a.href = canvas.toDataURL("image/png");
@@ -279,7 +238,7 @@ byId("btnExportCSV").addEventListener("click", () => {
   URL.revokeObjectURL(url);
 });
 
-// Default demo data
+// --- Default demo processes ---
 addRow("P1", 0, 5, 1);
 addRow("P2", 2, 5, 1);
 addRow("P3", 4, 5, 1);
