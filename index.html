@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Round Robin CPU Scheduling Visualizer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <!-- ==============================
+       MAIN LAYOUT: TWO SECTIONS
+       ============================== -->
+  <main>
+    <!-- LEFT PANEL: USER INPUT & CONTROLS -->
+    <section class="left">
+      <div class="card">
+        <h2>Input</h2>
+        <div class="body">
+          <!-- User sets time quantum and animation speed -->
+          <label>Time Quantum (ms)</label>
+          <input id="quantum" type="number" value="4" min="1">
+
+          <label>Animation Speed</label>
+          <select id="speed">
+            <option value="1">1×</option>
+            <option value="2">2×</option>
+            <option value="4">4×</option>
+          </select>
+
+          <!-- Basic input buttons -->
+          <div style="margin-top:8px">
+            <button id="btnAdd">+ Add Process</button>
+            <button id="btnClear">Clear</button>
+            <button id="btnBuild">Build Schedule</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Process Table (editable) -->
+      <div class="card">
+        <table id="procTable">
+          <thead>
+            <tr><th>PID</th><th>Arrival</th><th>Burst</th><th>Priority</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- Playback Controls -->
+      <div class="card controls">
+        <button id="btnPlay">▶ Play</button>
+        <button id="btnPause">⏸ Pause</button>
+        <button id="btnStep">⏭ Step</button>
+        <button id="btnBack">⏮ Back</button>
+        <button id="btnReset">↺ Reset</button>
+        <button id="btnExportPNG">📷 Export Screenshot</button>
+        <button id="btnExportCSV">⬇ Export Trace</button>
+      </div>
+    </section>
+
+    <!-- RIGHT PANEL: VISUALIZATION + STATS -->
+    <section class="viz">
+      <div class="card">
+        <h2>CPU • Ready Queue • Gantt</h2>
+        <canvas id="stage" width="1200" height="380"></canvas>
+        <div class="muted">Build schedule, then Play or Step.</div>
+      </div>
+
+      <!-- Live statistics -->
+      <div class="card">
+        <h2>Statistics</h2>
+        <div class="stat">Avg Waiting: <b id="statAWT">—</b></div>
+        <div class="stat">Avg Turnaround: <b id="statATAT">—</b></div>
+        <div class="stat">Throughput: <b id="statTH">—</b></div>
+        <div class="stat">CPU Utilization: <b id="statCPU">—</b></div>
+      </div>
+
+      <!-- Log of events -->
+      <div class="card">
+        <h2>Execution Timeline</h2>
+        <div id="log" class="muted"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>Round Robin Visualization • Works offline in all modern browsers</footer>
+
+  <!-- JavaScript modules -->
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
