@@ -118,11 +118,27 @@ function stepTick(state) {
 // Play / Animation Loop
 // =======================================================
 function playLoop() {
-  if (!state || !playing) return;
-  stepTick(state);
+  if (!state) return;
+
+  const result = stepTick(state); // progress one tick
   draw();
   updateStats();
-  if (playing) rafId = requestAnimationFrame(playLoop);
+
+  // Check if all processes are done
+  const allDone = state.processes.every(p => p.remaining <= 0);
+
+  if (allDone) {
+    playing = false;
+    cancelAnimationFrame(rafId);
+    logMsg("✅ All processes completed.");
+    updateStats();
+    return;
+  }
+
+  // Continue the loop only if playing is still true
+  if (playing) {
+    rafId = requestAnimationFrame(playLoop);
+  }
 }
 
 // =======================================================
