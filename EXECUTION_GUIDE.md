@@ -36,15 +36,17 @@ This guide explains how to **run, interact, and understand** the visualization l
 - **Edit Cells:** Directly edit *Arrival*, *Burst*, and *Priority* values.  
 - **Clear Table:** Removes all current processes.  
 
-### Simulation Controls
+**###Simulation Controls**
 | Button | Function |
-|---------|-----------|
-| ▶ **Play** | Starts continuous animation of process execution |
-| ⏸ **Pause** | Halts execution at the current state |
-| ⏭ **Step** | Advances one CPU tick manually |
-| ↺ **Reset** | Restores the simulation to the initial state |
-| 📷 **Export Screenshot** | Saves a PNG image of the visualization |
-| ⬇ **Export Trace** | Exports event logs (start, finish, preempt) as CSV |
+|:--------|:----------|
+| ▶ Play | Starts continuous animation of process execution |
+| ⏸ Pause | Halts execution at the current state |
+| ⏮ Step Back | Moves one CPU tick backward (undo last execution step) |
+| ⏭ Step | Advances one CPU tick manually |
+| ↺ Reset | Restores the simulation to the initial state |
+| 📷 Export Screenshot | Saves a PNG image of the visualization |
+| ⬇ Export Trace | Exports event logs (start, finish, preempt) as CSV |
+
 
 ---
 
