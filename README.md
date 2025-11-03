@@ -27,6 +27,7 @@ Built using **HTML5**, **CSS3**, and **JavaScript (ES6 Modules)**, it provides a
 ---
 
 ###  File Structure
+```
 rr-visualizer/
 │
 ├── index.html # Main interface layout
@@ -38,7 +39,7 @@ rr-visualizer/
 │
 ├── README.md # Project description and overview
 └── EXECUTION_GUIDE.md # Setup and running instructions
-
+```
 
 ---
 
