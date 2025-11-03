@@ -1,16 +1,14 @@
 // ---------------------------------------------------------------
-// Round Robin CPU Scheduling Visualizer
-// Handles UI bindings, animation control, drawing, and stats update
+// Round Robin CPU Scheduling Visualizer (with Step Back support)
 // ---------------------------------------------------------------
 
-// Global variables for canvas and animation control
 const canvas = document.getElementById("stage");
 const ctx = canvas.getContext("2d");
 let playing = false;
 let rafId = null;
 let state = null;
+let history = []; // store states for Step Back
 
-// DOM helper
 const byId = (id) => document.getElementById(id);
 
 // ---------------------------------------------------------------
@@ -18,11 +16,6 @@ const byId = (id) => document.getElementById(id);
 // ---------------------------------------------------------------
 function initEngine() {
   const tqInput = byId("tq");
-  if (!tqInput) {
-    console.error("Time Quantum input not found!");
-    return;
-  }
-
   const tq = parseInt(tqInput.value);
   const rows = Array.from(document.querySelectorAll("tbody tr"));
   const processes = rows.map((r) => {
@@ -37,15 +30,8 @@ function initEngine() {
     };
   });
 
-  state = {
-    clock: 0,
-    tq,
-    processes,
-    queue: [],
-    blocks: [],
-    trace: [],
-  };
-
+  state = { clock: 0, tq, processes, queue: [], blocks: [], trace: [] };
+  history = []; // clear old
   playing = false;
   cancelAnimationFrame(rafId);
   draw();
@@ -57,8 +43,13 @@ function initEngine() {
 // ---------------------------------------------------------------
 // MAIN SIMULATION LOGIC
 // ---------------------------------------------------------------
+function clone(obj) {
+  return JSON.parse(JSON.stringify(obj));
+}
+
 function stepTick(s) {
-  // Add new arrivals to the ready queue
+  history.push(clone(s)); // Save snapshot before modifying
+
   s.processes.forEach((p) => {
     if (p.arrival === s.clock) {
       s.queue.push(p);
@@ -66,7 +57,6 @@ function stepTick(s) {
     }
   });
 
-  // If no running process, pick from queue
   if (!s.running && s.queue.length > 0) {
     s.running = s.queue.shift();
     s.runningStart = s.clock;
@@ -74,58 +64,53 @@ function stepTick(s) {
     logMsg(`▶️ Running ${s.running.pid}`);
   }
 
-  // Execute one tick if running
   if (s.running) {
     s.running.remaining -= 1;
     s.clock += 1;
 
-    // If finished
     if (s.running.remaining <= 0) {
       logMsg(`✅ ${s.running.pid} finished`);
-      s.blocks.push({
-        pid: s.running.pid,
-        start: s.runningStart,
-        end: s.clock,
-      });
+      s.blocks.push({ pid: s.running.pid, start: s.runningStart, end: s.clock });
       s.running = null;
-    }
-    // If quantum expires
-    else if (s.clock >= s.runningEnd) {
+    } else if (s.clock >= s.runningEnd) {
       logMsg(`⏳ Quantum expired for ${s.running.pid}`);
       s.queue.push(s.running);
-      s.blocks.push({
-        pid: s.running.pid,
-        start: s.runningStart,
-        end: s.runningEnd,
-      });
+      s.blocks.push({ pid: s.running.pid, start: s.runningStart, end: s.runningEnd });
       s.running = null;
     }
-  } else {
-    // Idle time tick
-    s.clock += 1;
-  }
+  } else s.clock += 1;
 
-  // Trace the tick
   s.trace.push({
     time: s.clock,
     event: s.running ? "RUNNING" : "IDLE",
     pid: s.running ? s.running.pid : null,
   });
 
-  // Return true if all processes completed
   return s.processes.every((p) => p.remaining <= 0);
 }
 
 // ---------------------------------------------------------------
-// PLAY LOOP (with termination fix)
+// STEP BACKWARD FUNCTION
+// ---------------------------------------------------------------
+function stepBack() {
+  if (history.length === 0) {
+    logMsg("⛔ No previous step to revert to.");
+    return;
+  }
+  state = history.pop(); // revert
+  draw();
+  updateStats();
+  logMsg("⏮ Reverted one step back.");
+}
+
+// ---------------------------------------------------------------
+// PLAY LOOP
 // ---------------------------------------------------------------
 function playLoop() {
   if (!state) return;
-
   const allDone = stepTick(state);
   draw();
   updateStats();
-
   if (allDone) {
     playing = false;
     cancelAnimationFrame(rafId);
@@ -133,10 +118,7 @@ function playLoop() {
     updateStats();
     return;
   }
-
-  if (playing) {
-    rafId = requestAnimationFrame(playLoop);
-  }
+  if (playing) rafId = requestAnimationFrame(playLoop);
 }
 
 // ---------------------------------------------------------------
@@ -147,22 +129,16 @@ function draw() {
   ctx.fillStyle = "#0b1028";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Draw Gantt Chart Border
   const baseX = 30, baseY = 30, w = 1100, h = 100;
   roundRect(ctx, baseX, baseY, w, h, 14, "#0c1340", "#26357a");
   text("Gantt Chart", baseX + 12, baseY + 22, 14, "#9fb0ff");
 
-  const maxT = Math.max(
-    (state?.clock ?? 0) + 1,
-    totalBurst() + maxArrival()
-  );
-  const chartX = baseX + 12,
-    chartY = baseY + 36,
-    chartW = w - 24,
-    chartH = 70;
+  if (!state) return;
+
+  const maxT = Math.max((state.clock ?? 0) + 1, totalBurst() + maxArrival());
+  const chartX = baseX + 12, chartY = baseY + 36, chartW = w - 24, chartH = 70;
 
   ctx.strokeStyle = "#19234f";
-  ctx.lineWidth = 1;
   for (let t = 0; t <= maxT; t += 1) {
     const x = chartX + (t / maxT) * chartW;
     ctx.beginPath();
@@ -171,7 +147,6 @@ function draw() {
     ctx.stroke();
   }
 
-  if (!state) return;
   state.blocks.forEach((b) => {
     const p = state.processes.find((pp) => pp.pid === b.pid);
     const x1 = chartX + (b.start / maxT) * chartW;
@@ -210,9 +185,7 @@ byId("btnAdd").addEventListener("click", () => {
   const n = tableBody.querySelectorAll("tr").length;
   addRow(`P${n + 1}`, n * 2, 5, 1);
 });
-byId("btnClear").addEventListener("click", () => {
-  tableBody.innerHTML = "";
-});
+byId("btnClear").addEventListener("click", () => (tableBody.innerHTML = ""));
 byId("btnBuild").addEventListener("click", () => initEngine());
 byId("btnPlay").addEventListener("click", () => {
   if (!state) return;
@@ -229,6 +202,10 @@ byId("btnStep").addEventListener("click", () => {
   stepTick(state);
   draw();
   updateStats();
+});
+byId("btnStepBack").addEventListener("click", () => {
+  playing = false;
+  stepBack();
 });
 byId("btnReset").addEventListener("click", () => {
   playing = false;
@@ -262,20 +239,15 @@ function computeStats(s) {
     else acc[p.pid].end = b.end;
     return acc;
   }, {});
-
   const count = Object.keys(completed).length;
   if (count === 0) return { awt: 0, atat: 0, throughput: 0, cpuUtil: 0 };
-
-  let totalWT = 0,
-    totalTAT = 0,
-    totalBurst = 0;
+  let totalWT = 0, totalTAT = 0, totalBurst = 0;
   for (const pid in completed) {
     const c = completed[pid];
     totalTAT += c.end - s.processes.find((p) => p.pid === pid).arrival;
     totalWT += totalTAT - c.burst;
     totalBurst += c.burst;
   }
-
   return {
     awt: totalWT / count,
     atat: totalTAT / count,
@@ -302,12 +274,11 @@ function logClear() {
 }
 
 // ---------------------------------------------------------------
-// DRAWING HELPERS
+// DRAW HELPERS
 // ---------------------------------------------------------------
 function roundRect(c, x, y, w, h, r, fill, stroke) {
   c.fillStyle = fill;
   c.strokeStyle = stroke;
-  c.lineWidth = 1;
   c.beginPath();
   c.moveTo(x + r, y);
   c.arcTo(x + w, y, x + w, y + h, r);
