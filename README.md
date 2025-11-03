@@ -1,5 +1,8 @@
 #  Round Robin CPU Scheduling — Interactive Visualizer
 
+**Hosted on GitHub Pages:**
+https://sujalgm.github.io/rr-visualizer/
+
 ### Overview
 This project is a **browser-based simulation tool** that visualizes the **Round Robin CPU Scheduling Algorithm**.  
 It allows users to add processes dynamically, set a custom time quantum, and view the **Gantt chart**, **ready queue**, and **statistics** such as:
