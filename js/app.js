@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------
-// Round Robin CPU Scheduling Visualizer (with Step Back support)
+// Round Robin CPU Scheduling Visualizer (with Step Back + Idle Display)
 // ---------------------------------------------------------------
 
 const canvas = document.getElementById("stage");
@@ -7,7 +7,7 @@ const ctx = canvas.getContext("2d");
 let playing = false;
 let rafId = null;
 let state = null;
-let history = []; // store states for Step Back
+let history = []; // for step back
 
 const byId = (id) => document.getElementById(id);
 
@@ -15,8 +15,7 @@ const byId = (id) => document.getElementById(id);
 // ENGINE INITIALIZATION
 // ---------------------------------------------------------------
 function initEngine() {
-  const tqInput = byId("tq");
-  const tq = parseInt(tqInput.value);
+  const tq = parseInt(byId("tq").value);
   const rows = Array.from(document.querySelectorAll("tbody tr"));
   const processes = rows.map((r) => {
     const cells = r.querySelectorAll("td");
@@ -31,7 +30,7 @@ function initEngine() {
   });
 
   state = { clock: 0, tq, processes, queue: [], blocks: [], trace: [] };
-  history = []; // clear old
+  history = [];
   playing = false;
   cancelAnimationFrame(rafId);
   draw();
@@ -48,8 +47,9 @@ function clone(obj) {
 }
 
 function stepTick(s) {
-  history.push(clone(s)); // Save snapshot before modifying
+  history.push(clone(s));
 
+  // Add new arrivals
   s.processes.forEach((p) => {
     if (p.arrival === s.clock) {
       s.queue.push(p);
@@ -57,6 +57,7 @@ function stepTick(s) {
     }
   });
 
+  // Select next process if CPU idle
   if (!s.running && s.queue.length > 0) {
     s.running = s.queue.shift();
     s.runningStart = s.clock;
@@ -64,6 +65,7 @@ function stepTick(s) {
     logMsg(`▶️ Running ${s.running.pid}`);
   }
 
+  // Execute tick or idle
   if (s.running) {
     s.running.remaining -= 1;
     s.clock += 1;
@@ -78,26 +80,31 @@ function stepTick(s) {
       s.blocks.push({ pid: s.running.pid, start: s.runningStart, end: s.runningEnd });
       s.running = null;
     }
-  } else s.clock += 1;
+  } else {
+    // CPU Idle tick
+    s.blocks.push({ pid: "IDLE", start: s.clock, end: s.clock + 1 });
+    s.clock += 1;
+    logMsg(`💤 CPU idle`);
+  }
 
   s.trace.push({
     time: s.clock,
     event: s.running ? "RUNNING" : "IDLE",
-    pid: s.running ? s.running.pid : null,
+    pid: s.running ? s.running.pid : "IDLE",
   });
 
   return s.processes.every((p) => p.remaining <= 0);
 }
 
 // ---------------------------------------------------------------
-// STEP BACKWARD FUNCTION
+// STEP BACK FUNCTION
 // ---------------------------------------------------------------
 function stepBack() {
   if (history.length === 0) {
     logMsg("⛔ No previous step to revert to.");
     return;
   }
-  state = history.pop(); // revert
+  state = history.pop();
   draw();
   updateStats();
   logMsg("⏮ Reverted one step back.");
@@ -122,7 +129,7 @@ function playLoop() {
 }
 
 // ---------------------------------------------------------------
-// CANVAS DRAWING
+// DRAWING
 // ---------------------------------------------------------------
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -134,7 +141,6 @@ function draw() {
   text("Gantt Chart", baseX + 12, baseY + 22, 14, "#9fb0ff");
 
   if (!state) return;
-
   const maxT = Math.max((state.clock ?? 0) + 1, totalBurst() + maxArrival());
   const chartX = baseX + 12, chartY = baseY + 36, chartW = w - 24, chartH = 70;
 
@@ -147,12 +153,23 @@ function draw() {
     ctx.stroke();
   }
 
+  // Draw process blocks
   state.blocks.forEach((b) => {
-    const p = state.processes.find((pp) => pp.pid === b.pid);
-    const x1 = chartX + (b.start / maxT) * chartW;
-    const x2 = chartX + (b.end / maxT) * chartW;
-    roundRect(ctx, x1, chartY + 6, Math.max(2, x2 - x1), chartH - 12, 8, shade(p.color, 0.18), p.color);
-    text(p.pid, x1 + 6, chartY + chartH / 2 + 4, 12, "#0b1020");
+    const isIdle = b.pid === "IDLE";
+    if (isIdle) {
+      // Draw empty rectangle (no color fill)
+      ctx.strokeStyle = "#37416f";
+      ctx.lineWidth = 1;
+      const x1 = chartX + (b.start / maxT) * chartW;
+      const x2 = chartX + (b.end / maxT) * chartW;
+      ctx.strokeRect(x1, chartY + 6, Math.max(2, x2 - x1), chartH - 12);
+    } else {
+      const p = state.processes.find((pp) => pp.pid === b.pid);
+      const x1 = chartX + (b.start / maxT) * chartW;
+      const x2 = chartX + (b.end / maxT) * chartW;
+      roundRect(ctx, x1, chartY + 6, Math.max(2, x2 - x1), chartH - 12, 8, shade(p.color, 0.18), p.color);
+      text(p.pid, x1 + 6, chartY + chartH / 2 + 4, 12, "#0b1020");
+    }
   });
 
   text(`Clock: ${state.clock}`, chartX, chartY + chartH + 16, 13, "#9fb0ff");
@@ -187,30 +204,11 @@ byId("btnAdd").addEventListener("click", () => {
 });
 byId("btnClear").addEventListener("click", () => (tableBody.innerHTML = ""));
 byId("btnBuild").addEventListener("click", () => initEngine());
-byId("btnPlay").addEventListener("click", () => {
-  if (!state) return;
-  playing = true;
-  playLoop();
-});
-byId("btnPause").addEventListener("click", () => {
-  playing = false;
-  cancelAnimationFrame(rafId);
-});
-byId("btnStep").addEventListener("click", () => {
-  playing = false;
-  if (!state) return;
-  stepTick(state);
-  draw();
-  updateStats();
-});
-byId("btnStepBack").addEventListener("click", () => {
-  playing = false;
-  stepBack();
-});
-byId("btnReset").addEventListener("click", () => {
-  playing = false;
-  initEngine();
-});
+byId("btnPlay").addEventListener("click", () => { if (!state) return; playing = true; playLoop(); });
+byId("btnPause").addEventListener("click", () => { playing = false; cancelAnimationFrame(rafId); });
+byId("btnStep").addEventListener("click", () => { playing = false; if (!state) return; stepTick(state); draw(); updateStats(); });
+byId("btnStepBack").addEventListener("click", () => { playing = false; stepBack(); });
+byId("btnReset").addEventListener("click", () => { playing = false; initEngine(); });
 byId("btnExportPNG").addEventListener("click", () => {
   const a = document.createElement("a");
   a.href = canvas.toDataURL("image/png");
@@ -234,6 +232,7 @@ byId("btnExportCSV").addEventListener("click", () => {
 // ---------------------------------------------------------------
 function computeStats(s) {
   const completed = s.blocks.reduce((acc, b) => {
+    if (b.pid === "IDLE") return acc; // ignore idle blocks
     const p = s.processes.find((x) => x.pid === b.pid);
     if (!acc[p.pid]) acc[p.pid] = { start: b.start, end: b.end, burst: p.burst };
     else acc[p.pid].end = b.end;
@@ -269,9 +268,7 @@ function logMsg(msg) {
   box.textContent += `t=${state.clock}: ${msg}\n`;
   box.scrollTop = box.scrollHeight;
 }
-function logClear() {
-  byId("log").textContent = "";
-}
+function logClear() { byId("log").textContent = ""; }
 
 // ---------------------------------------------------------------
 // DRAW HELPERS
