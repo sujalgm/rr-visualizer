@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------
 // Round Robin CPU Scheduling Visualizer
-// Includes: Step Back button + IDLE block display
+// ✅ Fixed: Proper Idle Handling + Stop After Completion + Step Back
 // ---------------------------------------------------------------
 
 const canvas = document.getElementById("stage");
@@ -13,7 +13,7 @@ let history = [];
 const byId = (id) => document.getElementById(id);
 
 // ---------------------------------------------------------------
-// INITIALIZE ENGINE
+// INITIALIZATION
 // ---------------------------------------------------------------
 function initEngine() {
   const tq = parseInt(byId("tq").value);
@@ -41,7 +41,7 @@ function initEngine() {
 }
 
 // ---------------------------------------------------------------
-// MAIN ROUND ROBIN STEP
+// SINGLE TICK SIMULATION
 // ---------------------------------------------------------------
 function clone(o) {
   return JSON.parse(JSON.stringify(o));
@@ -50,7 +50,15 @@ function clone(o) {
 function stepTick(s) {
   history.push(clone(s));
 
-  // 1️⃣ Try to start a process if ready
+  // 1️⃣ Add new arrivals first
+  s.processes.forEach((p) => {
+    if (p.arrival === s.clock) {
+      s.queue.push(p);
+      logMsg(`📥 Process ${p.pid} arrived`);
+    }
+  });
+
+  // 2️⃣ If no process is running, get from queue
   if (!s.running && s.queue.length > 0) {
     s.running = s.queue.shift();
     s.runningStart = s.clock;
@@ -58,37 +66,40 @@ function stepTick(s) {
     logMsg(`▶️ Running ${s.running.pid}`);
   }
 
-  // 2️⃣ Execute or idle
-  if (s.running) {
-    s.running.remaining -= 1;
-    s.clock++;
-
-    if (s.running.remaining <= 0) {
-      logMsg(`✅ ${s.running.pid} finished`);
-      s.blocks.push({ pid: s.running.pid, start: s.runningStart, end: s.clock });
-      s.running = null;
-    } else if (s.clock >= s.runningEnd) {
-      logMsg(`⏳ Quantum expired for ${s.running.pid}`);
-      s.queue.push(s.running);
-      s.blocks.push({ pid: s.running.pid, start: s.runningStart, end: s.runningEnd });
-      s.running = null;
+  // 3️⃣ If still nothing to run — CPU idle
+  if (!s.running) {
+    const unfinished = s.processes.some((p) => p.remaining > 0);
+    if (!unfinished) {
+      // all done, stop simulation
+      logMsg("🏁 All processes completed.");
+      playing = false;
+      cancelAnimationFrame(rafId);
+      return true;
     }
-  } else {
-    // 💤 CPU Idle tick
+
+    // record idle tick
     const last = s.blocks[s.blocks.length - 1];
     if (last && last.pid === "IDLE") last.end += 1;
     else s.blocks.push({ pid: "IDLE", start: s.clock, end: s.clock + 1 });
     logMsg("💤 CPU idle");
     s.clock++;
+    return false;
   }
 
-  // 3️⃣ Add new arrivals *after* clock increments (to allow idle gaps)
-  s.processes.forEach((p) => {
-    if (p.arrival === s.clock) {
-      s.queue.push(p);
-      logMsg(`📥 Process ${p.pid} arrived`);
-    }
-  });
+  // 4️⃣ Execute current process
+  s.running.remaining -= 1;
+  s.clock++;
+
+  if (s.running.remaining <= 0) {
+    logMsg(`✅ ${s.running.pid} finished`);
+    s.blocks.push({ pid: s.running.pid, start: s.runningStart, end: s.clock });
+    s.running = null;
+  } else if (s.clock >= s.runningEnd) {
+    logMsg(`⏳ Quantum expired for ${s.running.pid}`);
+    s.queue.push(s.running);
+    s.blocks.push({ pid: s.running.pid, start: s.runningStart, end: s.runningEnd });
+    s.running = null;
+  }
 
   s.trace.push({
     time: s.clock,
@@ -124,14 +135,13 @@ function playLoop() {
   if (done) {
     playing = false;
     cancelAnimationFrame(rafId);
-    logMsg("🏁 All processes completed.");
     return;
   }
   if (playing) rafId = requestAnimationFrame(playLoop);
 }
 
 // ---------------------------------------------------------------
-// DRAWING SECTION
+// DRAWING FUNCTION
 // ---------------------------------------------------------------
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -146,7 +156,7 @@ function draw() {
   const maxT = Math.max(state.clock + 1, totalBurst() + maxArrival());
   const chartX = baseX + 12, chartY = baseY + 36, chartW = w - 24, chartH = 70;
 
-  // grid lines
+  // grid
   ctx.strokeStyle = "#1b2555";
   for (let t = 0; t <= maxT; t++) {
     const x = chartX + (t / maxT) * chartW;
@@ -185,7 +195,7 @@ function draw() {
 }
 
 // ---------------------------------------------------------------
-// STATS + LOGGING
+// UTILITIES + LOGGING
 // ---------------------------------------------------------------
 function totalBurst() {
   return state.processes.reduce((s, p) => s + p.burst, 0);
@@ -228,7 +238,7 @@ function logMsg(m) {
 function logClear() { byId("log").textContent = ""; }
 
 // ---------------------------------------------------------------
-// CANVAS HELPERS
+// DRAW HELPERS
 // ---------------------------------------------------------------
 function roundRect(c, x, y, w, h, r, fill, stroke) {
   c.fillStyle = fill; c.strokeStyle = stroke;
@@ -294,7 +304,7 @@ byId("btnExportCSV").onclick = () => {
   a.click();
 };
 
-// Default demo processes
+// Default demo
 addRow("P1", 0, 3, 1);
 addRow("P2", 5, 2, 1);
 addRow("P3", 8, 4, 1);
