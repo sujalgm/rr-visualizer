@@ -1,5 +1,6 @@
 // ---------------------------------------------------------------
-// Round Robin CPU Scheduling Visualizer (with Step Back + Idle Display)
+// Round Robin CPU Scheduling Visualizer
+// Features: Step Back + Idle Visualization
 // ---------------------------------------------------------------
 
 const canvas = document.getElementById("stage");
@@ -7,7 +8,7 @@ const ctx = canvas.getContext("2d");
 let playing = false;
 let rafId = null;
 let state = null;
-let history = []; // for step back
+let history = [];
 
 const byId = (id) => document.getElementById(id);
 
@@ -57,7 +58,7 @@ function stepTick(s) {
     }
   });
 
-  // Select next process if CPU idle
+  // Pick next process
   if (!s.running && s.queue.length > 0) {
     s.running = s.queue.shift();
     s.runningStart = s.clock;
@@ -65,7 +66,7 @@ function stepTick(s) {
     logMsg(`▶️ Running ${s.running.pid}`);
   }
 
-  // Execute tick or idle
+  // Execute or idle
   if (s.running) {
     s.running.remaining -= 1;
     s.clock += 1;
@@ -83,8 +84,8 @@ function stepTick(s) {
   } else {
     // CPU Idle tick
     s.blocks.push({ pid: "IDLE", start: s.clock, end: s.clock + 1 });
-    s.clock += 1;
     logMsg(`💤 CPU idle`);
+    s.clock += 1;
   }
 
   s.trace.push({
@@ -129,7 +130,7 @@ function playLoop() {
 }
 
 // ---------------------------------------------------------------
-// DRAWING
+// DRAWING FUNCTION
 // ---------------------------------------------------------------
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -144,8 +145,9 @@ function draw() {
   const maxT = Math.max((state.clock ?? 0) + 1, totalBurst() + maxArrival());
   const chartX = baseX + 12, chartY = baseY + 36, chartW = w - 24, chartH = 70;
 
+  // grid lines
   ctx.strokeStyle = "#19234f";
-  for (let t = 0; t <= maxT; t += 1) {
+  for (let t = 0; t <= maxT; t++) {
     const x = chartX + (t / maxT) * chartW;
     ctx.beginPath();
     ctx.moveTo(x, chartY);
@@ -153,21 +155,20 @@ function draw() {
     ctx.stroke();
   }
 
-  // Draw process blocks
+  // draw blocks
   state.blocks.forEach((b) => {
     const isIdle = b.pid === "IDLE";
+    const x1 = chartX + (b.start / maxT) * chartW;
+    const x2 = chartX + (b.end / maxT) * chartW;
+    const width = Math.max(4, x2 - x1);
     if (isIdle) {
-      // Draw empty rectangle (no color fill)
-      ctx.strokeStyle = "#37416f";
-      ctx.lineWidth = 1;
-      const x1 = chartX + (b.start / maxT) * chartW;
-      const x2 = chartX + (b.end / maxT) * chartW;
-      ctx.strokeRect(x1, chartY + 6, Math.max(2, x2 - x1), chartH - 12);
+      // Idle block: visible outlined rectangle (no fill)
+      ctx.strokeStyle = "#9ca3ff"; // light border for contrast
+      ctx.lineWidth = 2.2;         // slightly thicker border
+      ctx.strokeRect(x1, chartY + 4, width, chartH - 8);
     } else {
       const p = state.processes.find((pp) => pp.pid === b.pid);
-      const x1 = chartX + (b.start / maxT) * chartW;
-      const x2 = chartX + (b.end / maxT) * chartW;
-      roundRect(ctx, x1, chartY + 6, Math.max(2, x2 - x1), chartH - 12, 8, shade(p.color, 0.18), p.color);
+      roundRect(ctx, x1, chartY + 6, width, chartH - 12, 8, shade(p.color, 0.18), p.color);
       text(p.pid, x1 + 6, chartY + chartH / 2 + 4, 12, "#0b1020");
     }
   });
@@ -232,7 +233,7 @@ byId("btnExportCSV").addEventListener("click", () => {
 // ---------------------------------------------------------------
 function computeStats(s) {
   const completed = s.blocks.reduce((acc, b) => {
-    if (b.pid === "IDLE") return acc; // ignore idle blocks
+    if (b.pid === "IDLE") return acc;
     const p = s.processes.find((x) => x.pid === b.pid);
     if (!acc[p.pid]) acc[p.pid] = { start: b.start, end: b.end, burst: p.burst };
     else acc[p.pid].end = b.end;
