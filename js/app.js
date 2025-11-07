@@ -49,15 +49,7 @@ function clone(o) {
 function stepTick(s) {
   history.push(clone(s));
 
-  // arrivals
-  s.processes.forEach((p) => {
-    if (p.arrival === s.clock) {
-      s.queue.push(p);
-      logMsg(`📥 Process ${p.pid} arrived`);
-    }
-  });
-
-  // select next
+  // 1️⃣ First, check if any process should start running now
   if (!s.running && s.queue.length > 0) {
     s.running = s.queue.shift();
     s.runningStart = s.clock;
@@ -65,10 +57,11 @@ function stepTick(s) {
     logMsg(`▶️ Running ${s.running.pid}`);
   }
 
-  // execute or idle
+  // 2️⃣ Execute current process or record idle
   if (s.running) {
     s.running.remaining -= 1;
     s.clock++;
+
     if (s.running.remaining <= 0) {
       logMsg(`✅ ${s.running.pid} finished`);
       s.blocks.push({ pid: s.running.pid, start: s.runningStart, end: s.clock });
@@ -80,13 +73,21 @@ function stepTick(s) {
       s.running = null;
     }
   } else {
-    // CPU Idle tick — merge consecutive idle blocks
+    // 💤 No running process — CPU is idle for this tick
     const last = s.blocks[s.blocks.length - 1];
     if (last && last.pid === "IDLE") last.end += 1;
     else s.blocks.push({ pid: "IDLE", start: s.clock, end: s.clock + 1 });
-    s.clock++;
     logMsg("💤 CPU idle");
+    s.clock++;
   }
+
+  // 3️⃣ After time advances, now check for arrivals (so idle gaps appear before new arrivals)
+  s.processes.forEach((p) => {
+    if (p.arrival === s.clock) {
+      s.queue.push(p);
+      logMsg(`📥 Process ${p.pid} arrived`);
+    }
+  });
 
   s.trace.push({
     time: s.clock,
@@ -96,6 +97,7 @@ function stepTick(s) {
 
   return s.processes.every((p) => p.remaining <= 0);
 }
+
 
 // ---------------------------------------------------------------
 // STEP BACK
