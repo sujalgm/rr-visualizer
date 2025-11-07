@@ -1,6 +1,5 @@
 // ---------------------------------------------------------------
-// Round Robin CPU Scheduling Visualizer
-// Features: Step Back + Idle Visualization
+// Round Robin CPU Scheduling Visualizer (Idle + Step Back)
 // ---------------------------------------------------------------
 
 const canvas = document.getElementById("stage");
@@ -19,13 +18,13 @@ function initEngine() {
   const tq = parseInt(byId("tq").value);
   const rows = Array.from(document.querySelectorAll("tbody tr"));
   const processes = rows.map((r) => {
-    const cells = r.querySelectorAll("td");
+    const c = r.querySelectorAll("td");
     return {
-      pid: cells[0].textContent.trim(),
-      arrival: parseInt(cells[1].textContent),
-      burst: parseInt(cells[2].textContent),
-      priority: parseInt(cells[3].textContent),
-      remaining: parseInt(cells[2].textContent),
+      pid: c[0].textContent.trim(),
+      arrival: parseInt(c[1].textContent),
+      burst: parseInt(c[2].textContent),
+      priority: parseInt(c[3].textContent),
+      remaining: parseInt(c[2].textContent),
       color: randColor(),
     };
   });
@@ -43,14 +42,14 @@ function initEngine() {
 // ---------------------------------------------------------------
 // MAIN SIMULATION LOGIC
 // ---------------------------------------------------------------
-function clone(obj) {
-  return JSON.parse(JSON.stringify(obj));
+function clone(o) {
+  return JSON.parse(JSON.stringify(o));
 }
 
 function stepTick(s) {
   history.push(clone(s));
 
-  // Add new arrivals
+  // arrivals
   s.processes.forEach((p) => {
     if (p.arrival === s.clock) {
       s.queue.push(p);
@@ -58,7 +57,7 @@ function stepTick(s) {
     }
   });
 
-  // Pick next process
+  // pick next
   if (!s.running && s.queue.length > 0) {
     s.running = s.queue.shift();
     s.runningStart = s.clock;
@@ -66,11 +65,10 @@ function stepTick(s) {
     logMsg(`▶️ Running ${s.running.pid}`);
   }
 
-  // Execute or idle
+  // execute or idle
   if (s.running) {
     s.running.remaining -= 1;
-    s.clock += 1;
-
+    s.clock++;
     if (s.running.remaining <= 0) {
       logMsg(`✅ ${s.running.pid} finished`);
       s.blocks.push({ pid: s.running.pid, start: s.runningStart, end: s.clock });
@@ -82,10 +80,12 @@ function stepTick(s) {
       s.running = null;
     }
   } else {
-    // CPU Idle tick
-    s.blocks.push({ pid: "IDLE", start: s.clock, end: s.clock + 1 });
-    logMsg(`💤 CPU idle`);
-    s.clock += 1;
+    // IDLE tick
+    const last = s.blocks[s.blocks.length - 1];
+    if (last && last.pid === "IDLE") last.end += 1;
+    else s.blocks.push({ pid: "IDLE", start: s.clock, end: s.clock + 1 });
+    s.clock++;
+    logMsg("💤 CPU idle");
   }
 
   s.trace.push({
@@ -98,7 +98,7 @@ function stepTick(s) {
 }
 
 // ---------------------------------------------------------------
-// STEP BACK FUNCTION
+// STEP BACK
 // ---------------------------------------------------------------
 function stepBack() {
   if (history.length === 0) {
@@ -116,21 +116,20 @@ function stepBack() {
 // ---------------------------------------------------------------
 function playLoop() {
   if (!state) return;
-  const allDone = stepTick(state);
+  const done = stepTick(state);
   draw();
   updateStats();
-  if (allDone) {
+  if (done) {
     playing = false;
     cancelAnimationFrame(rafId);
     logMsg("🏁 All processes completed.");
-    updateStats();
     return;
   }
   if (playing) rafId = requestAnimationFrame(playLoop);
 }
 
 // ---------------------------------------------------------------
-// DRAWING FUNCTION
+// DRAWING
 // ---------------------------------------------------------------
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -142,11 +141,11 @@ function draw() {
   text("Gantt Chart", baseX + 12, baseY + 22, 14, "#9fb0ff");
 
   if (!state) return;
-  const maxT = Math.max((state.clock ?? 0) + 1, totalBurst() + maxArrival());
+  const maxT = Math.max(state.clock + 1, totalBurst() + maxArrival());
   const chartX = baseX + 12, chartY = baseY + 36, chartW = w - 24, chartH = 70;
 
-  // grid lines
-  ctx.strokeStyle = "#19234f";
+  // grid
+  ctx.strokeStyle = "#1b2555";
   for (let t = 0; t <= maxT; t++) {
     const x = chartX + (t / maxT) * chartW;
     ctx.beginPath();
@@ -155,22 +154,28 @@ function draw() {
     ctx.stroke();
   }
 
-  // draw blocks
+  // draw normal process blocks
   state.blocks.forEach((b) => {
-    const isIdle = b.pid === "IDLE";
+    if (b.pid === "IDLE") return;
+    const p = state.processes.find((pp) => pp.pid === b.pid);
     const x1 = chartX + (b.start / maxT) * chartW;
     const x2 = chartX + (b.end / maxT) * chartW;
-    const width = Math.max(4, x2 - x1);
-    if (isIdle) {
-      // Idle block: visible outlined rectangle (no fill)
-      ctx.strokeStyle = "#9ca3ff"; // light border for contrast
-      ctx.lineWidth = 2.2;         // slightly thicker border
-      ctx.strokeRect(x1, chartY + 4, width, chartH - 8);
-    } else {
-      const p = state.processes.find((pp) => pp.pid === b.pid);
-      roundRect(ctx, x1, chartY + 6, width, chartH - 12, 8, shade(p.color, 0.18), p.color);
-      text(p.pid, x1 + 6, chartY + chartH / 2 + 4, 12, "#0b1020");
-    }
+    const width = Math.max(3, x2 - x1);
+    roundRect(ctx, x1, chartY + 6, width, chartH - 12, 8, shade(p.color, 0.18), p.color);
+    text(p.pid, x1 + 6, chartY + chartH / 2 + 4, 12, "#0b1020");
+  });
+
+  // draw idle blocks last (on top)
+  state.blocks.forEach((b) => {
+    if (b.pid !== "IDLE") return;
+    const x1 = chartX + (b.start / maxT) * chartW;
+    const x2 = chartX + (b.end / maxT) * chartW;
+    const width = Math.max(6, x2 - x1);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#9ca3ff"; // visible outline
+    ctx.strokeRect(x1, chartY + 3, width, chartH - 6);
+    // label "IDLE" for clarity
+    text("IDLE", x1 + width / 4, chartY + chartH / 2 + 4, 11, "#9ca3ff");
   });
 
   text(`Clock: ${state.clock}`, chartX, chartY + chartH + 16, 13, "#9fb0ff");
@@ -184,52 +189,43 @@ function maxArrival() {
 }
 
 // ---------------------------------------------------------------
-// UI + EVENT HANDLERS
+// UI + EVENTS
 // ---------------------------------------------------------------
 const tableBody = document.querySelector("tbody");
-
-function addRow(pid, arrival, burst, priority) {
+function addRow(pid, a, b, pr) {
   const tr = document.createElement("tr");
-  tr.innerHTML = `
-    <td>${pid}</td>
-    <td contenteditable="true">${arrival}</td>
-    <td contenteditable="true">${burst}</td>
-    <td contenteditable="true">${priority}</td>
-  `;
+  tr.innerHTML = `<td>${pid}</td><td contenteditable="true">${a}</td><td contenteditable="true">${b}</td><td contenteditable="true">${pr}</td>`;
   tableBody.appendChild(tr);
 }
-
-byId("btnAdd").addEventListener("click", () => {
+byId("btnAdd").onclick = () => {
   const n = tableBody.querySelectorAll("tr").length;
   addRow(`P${n + 1}`, n * 2, 5, 1);
-});
-byId("btnClear").addEventListener("click", () => (tableBody.innerHTML = ""));
-byId("btnBuild").addEventListener("click", () => initEngine());
-byId("btnPlay").addEventListener("click", () => { if (!state) return; playing = true; playLoop(); });
-byId("btnPause").addEventListener("click", () => { playing = false; cancelAnimationFrame(rafId); });
-byId("btnStep").addEventListener("click", () => { playing = false; if (!state) return; stepTick(state); draw(); updateStats(); });
-byId("btnStepBack").addEventListener("click", () => { playing = false; stepBack(); });
-byId("btnReset").addEventListener("click", () => { playing = false; initEngine(); });
-byId("btnExportPNG").addEventListener("click", () => {
+};
+byId("btnClear").onclick = () => (tableBody.innerHTML = "");
+byId("btnBuild").onclick = () => initEngine();
+byId("btnPlay").onclick = () => { if (!state) return; playing = true; playLoop(); };
+byId("btnPause").onclick = () => { playing = false; cancelAnimationFrame(rafId); };
+byId("btnStep").onclick = () => { playing = false; if (!state) return; stepTick(state); draw(); updateStats(); };
+byId("btnStepBack").onclick = () => { playing = false; stepBack(); };
+byId("btnReset").onclick = () => { playing = false; initEngine(); };
+byId("btnExportPNG").onclick = () => {
   const a = document.createElement("a");
   a.href = canvas.toDataURL("image/png");
   a.download = "rr_screenshot.png";
   a.click();
-});
-byId("btnExportCSV").addEventListener("click", () => {
+};
+byId("btnExportCSV").onclick = () => {
   const rows = ["time,event,pid"];
-  state.trace.forEach((t) => rows.push(`${t.time},${t.event},${t.pid ?? ""}`));
+  state.trace.forEach((t) => rows.push(`${t.time},${t.event},${t.pid}`));
   const blob = new Blob([rows.join("\n")], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url;
+  a.href = URL.createObjectURL(blob);
   a.download = "rr_trace.csv";
   a.click();
-  URL.revokeObjectURL(url);
-});
+};
 
 // ---------------------------------------------------------------
-// STATS + LOGGING
+// STATS + LOGS
 // ---------------------------------------------------------------
 function computeStats(s) {
   const completed = s.blocks.reduce((acc, b) => {
@@ -239,23 +235,18 @@ function computeStats(s) {
     else acc[p.pid].end = b.end;
     return acc;
   }, {});
-  const count = Object.keys(completed).length;
-  if (count === 0) return { awt: 0, atat: 0, throughput: 0, cpuUtil: 0 };
-  let totalWT = 0, totalTAT = 0, totalBurst = 0;
+  const c = Object.keys(completed).length;
+  if (c === 0) return { awt: 0, atat: 0, throughput: 0, cpuUtil: 0 };
+  let twt = 0, ttat = 0, tburst = 0;
   for (const pid in completed) {
-    const c = completed[pid];
-    totalTAT += c.end - s.processes.find((p) => p.pid === pid).arrival;
-    totalWT += totalTAT - c.burst;
-    totalBurst += c.burst;
+    const x = completed[pid];
+    const arr = s.processes.find((p) => p.pid === pid).arrival;
+    ttat += x.end - arr;
+    twt += ttat - x.burst;
+    tburst += x.burst;
   }
-  return {
-    awt: totalWT / count,
-    atat: totalTAT / count,
-    throughput: count / s.clock,
-    cpuUtil: (totalBurst / s.clock) * 100,
-  };
+  return { awt: twt / c, atat: ttat / c, throughput: c / s.clock, cpuUtil: (tburst / s.clock) * 100 };
 }
-
 function updateStats() {
   const s = computeStats(state);
   byId("statAWT").textContent = s.awt.toFixed(2);
@@ -263,10 +254,9 @@ function updateStats() {
   byId("statTH").textContent = s.throughput.toFixed(2) + "/t";
   byId("statCPU").textContent = s.cpuUtil.toFixed(1) + "%";
 }
-
-function logMsg(msg) {
+function logMsg(m) {
   const box = byId("log");
-  box.textContent += `t=${state.clock}: ${msg}\n`;
+  box.textContent += `t=${state.clock}: ${m}\n`;
   box.scrollTop = box.scrollHeight;
 }
 function logClear() { byId("log").textContent = ""; }
@@ -275,8 +265,7 @@ function logClear() { byId("log").textContent = ""; }
 // DRAW HELPERS
 // ---------------------------------------------------------------
 function roundRect(c, x, y, w, h, r, fill, stroke) {
-  c.fillStyle = fill;
-  c.strokeStyle = stroke;
+  c.fillStyle = fill; c.strokeStyle = stroke;
   c.beginPath();
   c.moveTo(x + r, y);
   c.arcTo(x + w, y, x + w, y + h, r);
@@ -293,20 +282,18 @@ function text(t, x, y, size, color) {
   ctx.fillText(t, x, y);
 }
 function shade(hex, amt) {
-  const c = parseInt(hex.slice(1), 16),
-    r = (c >> 16) & 255,
-    g = (c >> 8) & 255,
-    b = c & 255;
-  const fn = (v) => Math.max(0, Math.min(255, Math.round(v + amt * 255)));
-  return `rgb(${fn(r)},${fn(g)},${fn(b)})`;
+  const c = parseInt(hex.slice(1), 16);
+  const r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+  const f = (v) => Math.max(0, Math.min(255, Math.round(v + amt * 255)));
+  return `rgb(${f(r)},${f(g)},${f(b)})`;
 }
 function randColor() {
-  const colors = ["#4fc3f7", "#81c784", "#ba68c8", "#ffb74d", "#e57373"];
-  return colors[Math.floor(Math.random() * colors.length)];
+  const arr = ["#4fc3f7", "#81c784", "#ba68c8", "#ffb74d", "#e57373"];
+  return arr[Math.floor(Math.random() * arr.length)];
 }
 
 // ---------------------------------------------------------------
-// INITIAL SETUP
+// DEFAULT ROWS
 // ---------------------------------------------------------------
 addRow("P1", 0, 5, 1);
 addRow("P2", 2, 5, 1);
