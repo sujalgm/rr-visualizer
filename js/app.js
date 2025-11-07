@@ -1,5 +1,6 @@
 // ---------------------------------------------------------------
-// Round Robin CPU Scheduling Visualizer (FINAL Idle Highlighted)
+// Round Robin CPU Scheduling Visualizer
+// Includes: Step Back button + IDLE block display
 // ---------------------------------------------------------------
 
 const canvas = document.getElementById("stage");
@@ -12,7 +13,7 @@ let history = [];
 const byId = (id) => document.getElementById(id);
 
 // ---------------------------------------------------------------
-// INITIALIZE
+// INITIALIZE ENGINE
 // ---------------------------------------------------------------
 function initEngine() {
   const tq = parseInt(byId("tq").value);
@@ -29,7 +30,7 @@ function initEngine() {
     };
   });
 
-  state = { clock: 0, tq, processes, queue: [], blocks: [], trace: [] };
+  state = { clock: 0, tq, processes, queue: [], blocks: [], trace: [], running: null };
   history = [];
   playing = false;
   cancelAnimationFrame(rafId);
@@ -40,7 +41,7 @@ function initEngine() {
 }
 
 // ---------------------------------------------------------------
-// MAIN LOGIC
+// MAIN ROUND ROBIN STEP
 // ---------------------------------------------------------------
 function clone(o) {
   return JSON.parse(JSON.stringify(o));
@@ -49,7 +50,7 @@ function clone(o) {
 function stepTick(s) {
   history.push(clone(s));
 
-  // 1️⃣ First, check if any process should start running now
+  // 1️⃣ Try to start a process if ready
   if (!s.running && s.queue.length > 0) {
     s.running = s.queue.shift();
     s.runningStart = s.clock;
@@ -57,7 +58,7 @@ function stepTick(s) {
     logMsg(`▶️ Running ${s.running.pid}`);
   }
 
-  // 2️⃣ Execute current process or record idle
+  // 2️⃣ Execute or idle
   if (s.running) {
     s.running.remaining -= 1;
     s.clock++;
@@ -73,7 +74,7 @@ function stepTick(s) {
       s.running = null;
     }
   } else {
-    // 💤 No running process — CPU is idle for this tick
+    // 💤 CPU Idle tick
     const last = s.blocks[s.blocks.length - 1];
     if (last && last.pid === "IDLE") last.end += 1;
     else s.blocks.push({ pid: "IDLE", start: s.clock, end: s.clock + 1 });
@@ -81,7 +82,7 @@ function stepTick(s) {
     s.clock++;
   }
 
-  // 3️⃣ After time advances, now check for arrivals (so idle gaps appear before new arrivals)
+  // 3️⃣ Add new arrivals *after* clock increments (to allow idle gaps)
   s.processes.forEach((p) => {
     if (p.arrival === s.clock) {
       s.queue.push(p);
@@ -98,9 +99,8 @@ function stepTick(s) {
   return s.processes.every((p) => p.remaining <= 0);
 }
 
-
 // ---------------------------------------------------------------
-// STEP BACK
+// STEP BACK FUNCTION
 // ---------------------------------------------------------------
 function stepBack() {
   if (history.length === 0) {
@@ -131,7 +131,7 @@ function playLoop() {
 }
 
 // ---------------------------------------------------------------
-// DRAWING
+// DRAWING SECTION
 // ---------------------------------------------------------------
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -173,19 +173,19 @@ function draw() {
     const x1 = chartX + (b.start / maxT) * chartW;
     const x2 = chartX + (b.end / maxT) * chartW;
     const width = Math.max(6, x2 - x1);
-    ctx.lineWidth = 3.5;
-    ctx.strokeStyle = "#8fa8ff";
-    ctx.fillStyle = "rgba(160,170,255,0.15)"; // faint visible fill
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#b0baff";
+    ctx.fillStyle = "rgba(180,190,255,0.2)";
     ctx.fillRect(x1, chartY + 2, width, chartH - 4);
     ctx.strokeRect(x1, chartY + 2, width, chartH - 4);
-    text("IDLE", x1 + width / 4, chartY + chartH / 2 + 4, 11, "#cdd3ff");
+    text("IDLE", x1 + width / 4, chartY + chartH / 2 + 4, 11, "#ccd5ff");
   });
 
   text(`Clock: ${state.clock}`, chartX, chartY + chartH + 16, 13, "#9fb0ff");
 }
 
 // ---------------------------------------------------------------
-// UTILITIES + STATS
+// STATS + LOGGING
 // ---------------------------------------------------------------
 function totalBurst() {
   return state.processes.reduce((s, p) => s + p.burst, 0);
@@ -220,10 +220,6 @@ function updateStats() {
   byId("statTH").textContent = s.throughput.toFixed(2) + "/t";
   byId("statCPU").textContent = s.cpuUtil.toFixed(1) + "%";
 }
-
-// ---------------------------------------------------------------
-// LOGGING + HELPERS
-// ---------------------------------------------------------------
 function logMsg(m) {
   const box = byId("log");
   box.textContent += `t=${state.clock}: ${m}\n`;
@@ -231,6 +227,9 @@ function logMsg(m) {
 }
 function logClear() { byId("log").textContent = ""; }
 
+// ---------------------------------------------------------------
+// CANVAS HELPERS
+// ---------------------------------------------------------------
 function roundRect(c, x, y, w, h, r, fill, stroke) {
   c.fillStyle = fill; c.strokeStyle = stroke;
   c.beginPath();
@@ -260,7 +259,7 @@ function randColor() {
 }
 
 // ---------------------------------------------------------------
-// BUTTONS + DEFAULT ROWS
+// BUTTONS
 // ---------------------------------------------------------------
 const tableBody = document.querySelector("tbody");
 function addRow(pid, a, b, pr) {
@@ -295,6 +294,7 @@ byId("btnExportCSV").onclick = () => {
   a.click();
 };
 
-addRow("P1", 0, 5, 1);
-addRow("P2", 2, 5, 1);
-addRow("P3", 4, 5, 1);
+// Default demo processes
+addRow("P1", 0, 3, 1);
+addRow("P2", 5, 2, 1);
+addRow("P3", 8, 4, 1);
