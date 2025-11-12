@@ -1,72 +1,118 @@
-//
-// Round Robin CPU Scheduling Visualizer (with Step Back support)
-//
+// ---------------------------------------------------------------
+// Round Robin CPU Scheduling Visualizer
+// ✅ Fixed: Proper Idle Handling + Stop After Completion + Step Back
+// ---------------------------------------------------------------
+
 const canvas = document.getElementById("stage");
 const ctx = canvas.getContext("2d");
 let playing = false;
 let rafId = null;
 let state = null;
-let history = []; // stores previous states for Step Back
+let history = [];
+
 const byId = (id) => document.getElementById(id);
-// ENGINE INITIALIZATION
+
+// ---------------------------------------------------------------
+// INITIALIZATION
+// ---------------------------------------------------------------
 function initEngine() {
   const tq = parseInt(byId("tq").value);
   const rows = Array.from(document.querySelectorAll("tbody tr"));
   const processes = rows.map((r) => {
-    const cells = r.querySelectorAll("td");
+    const c = r.querySelectorAll("td");
     return {
-      pid: cells[0].textContent.trim(),
-      arrival: parseInt(cells[1].textContent),
-      burst: parseInt(cells[2].textContent),
-      priority: parseInt(cells[3].textContent),
-      remaining: parseInt(cells[2].textContent),
+      pid: c[0].textContent.trim(),
+      arrival: parseInt(c[1].textContent),
+      burst: parseInt(c[2].textContent),
+      priority: parseInt(c[3].textContent),
+      remaining: parseInt(c[2].textContent),
       color: randColor(),
     };
   });
-  state = { clock: 0, tq, processes, queue: [], blocks: [], trace: [] };
+
+  state = { clock: 0, tq, processes, queue: [], blocks: [], trace: [], running: null };
   history = [];
   playing = false;
   cancelAnimationFrame(rafId);
   draw();
   updateStats();
   logClear();
-  logMsg(" Engine initialized. Ready to start.");
+  logMsg("⚙️ Engine initialized. Ready to start.");
 }
-// MAIN STEP FUNCTION
-function clone(obj) { return JSON.parse(JSON.stringify(obj)); }
+
+// ---------------------------------------------------------------
+// SINGLE TICK SIMULATION
+// ---------------------------------------------------------------
+function clone(o) {
+  return JSON.parse(JSON.stringify(o));
+}
+
 function stepTick(s) {
-  history.push(clone(s)); // save previous state
+  history.push(clone(s));
+
+  // 1️⃣ Add new arrivals first
   s.processes.forEach((p) => {
     if (p.arrival === s.clock) {
       s.queue.push(p);
-      logMsg(📥 Process ${p.pid} arrived);
+      logMsg(`📥 Process ${p.pid} arrived`);
     }
   });
+
+  // 2️⃣ If no process is running, get from queue
   if (!s.running && s.queue.length > 0) {
     s.running = s.queue.shift();
     s.runningStart = s.clock;
     s.runningEnd = Math.min(s.clock + s.tq, s.clock + s.running.remaining);
-    logMsg(▶ Running ${s.running.pid});
+    logMsg(`▶️ Running ${s.running.pid}`);
   }
-  if (s.running) {
-    s.running.remaining -= 1;
-    s.clock += 1;
-    if (s.running.remaining <= 0) {
-      logMsg(✅ ${s.running.pid} finished);
-      s.blocks.push({ pid: s.running.pid, start: s.runningStart, end: s.clock });
-      s.running = null;
-    } else if (s.clock >= s.runningEnd) {
-      logMsg(◻ Quantum expired for ${s.running.pid});
-      s.queue.push(s.running);
-      s.blocks.push({ pid: s.running.pid, start: s.runningStart, end: s.runningEnd });
-      s.running = null;
+
+  // 3️⃣ If still nothing to run — CPU idle
+  if (!s.running) {
+    const unfinished = s.processes.some((p) => p.remaining > 0);
+    if (!unfinished) {
+      // all done, stop simulation
+      logMsg("🏁 All processes completed.");
+      playing = false;
+      cancelAnimationFrame(rafId);
+      return true;
     }
-  } else s.clock += 1;
-  s.trace.push({ time: s.clock, event: s.running ? "RUNNING" : "IDLE", pid: s.running ? s.running.pid
-    : null });
+
+    // record idle tick
+    const last = s.blocks[s.blocks.length - 1];
+    if (last && last.pid === "IDLE") last.end += 1;
+    else s.blocks.push({ pid: "IDLE", start: s.clock, end: s.clock + 1 });
+    logMsg("💤 CPU idle");
+    s.clock++;
+    return false;
+  }
+
+  // 4️⃣ Execute current process
+  s.running.remaining -= 1;
+  s.clock++;
+
+  if (s.running.remaining <= 0) {
+    logMsg(`✅ ${s.running.pid} finished`);
+    s.blocks.push({ pid: s.running.pid, start: s.runningStart, end: s.clock });
+    s.running = null;
+  } else if (s.clock >= s.runningEnd) {
+    logMsg(`⏳ Quantum expired for ${s.running.pid}`);
+    s.queue.push(s.running);
+    s.blocks.push({ pid: s.running.pid, start: s.runningStart, end: s.runningEnd });
+    s.running = null;
+  }
+
+  s.trace.push({
+    time: s.clock,
+    event: s.running ? "RUNNING" : "IDLE",
+    pid: s.running ? s.running.pid : "IDLE",
+  });
+
   return s.processes.every((p) => p.remaining <= 0);
 }
+
+// ---------------------------------------------------------------
 // STEP BACK FUNCTION
+// ---------------------------------------------------------------
 function stepBack() {
   if (history.length === 0) {
     logMsg("⛔ No previous step to revert to.");
@@ -75,168 +121,190 @@ function stepBack() {
   state = history.pop();
   draw();
   updateStats();
-  logMsg("◻ Reverted one step back.");
+  logMsg("⏮ Reverted one step back.");
 }
+
+// ---------------------------------------------------------------
 // PLAY LOOP
+// ---------------------------------------------------------------
 function playLoop() {
   if (!state) return;
-  const allDone = stepTick(state);
+  const done = stepTick(state);
   draw();
   updateStats();
-  if (allDone) {
+  if (done) {
     playing = false;
     cancelAnimationFrame(rafId);
-    logMsg("🏁 All processes completed.");
-    updateStats();
     return;
   }
   if (playing) rafId = requestAnimationFrame(playLoop);
 }
-// DRAWING FUNCTIONS
+
+// ---------------------------------------------------------------
+// DRAWING FUNCTION
+// ---------------------------------------------------------------
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = "#0b1028";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+
   const baseX = 30, baseY = 30, w = 1100, h = 100;
   roundRect(ctx, baseX, baseY, w, h, 14, "#0c1340", "#26357a");
   text("Gantt Chart", baseX + 12, baseY + 22, 14, "#9fb0ff");
+
   if (!state) return;
-  // totalBurst() and maxArrival() were referenced in your original draw; to avoid errors,
-  // compute small safe values here (fallback if those helpers are not present).
-  function safeTotalBurst() {
-    return state.processes.reduce((a, p) => a + (p.burst || 0), 0);
-  }
-  function safeMaxArrival() {
-    return state.processes.reduce((a, p) => Math.max(a, p.arrival || 0), 0);
-  }
-  const maxT = Math.max((state.clock ?? 0) + 1, safeTotalBurst() + safeMaxArrival());
+  const maxT = Math.max(state.clock + 1, totalBurst() + maxArrival());
   const chartX = baseX + 12, chartY = baseY + 36, chartW = w - 24, chartH = 70;
-  ctx.strokeStyle = "#19234f";
-  for (let t = 0; t <= maxT; t += 1) {
+
+  // grid
+  ctx.strokeStyle = "#1b2555";
+  for (let t = 0; t <= maxT; t++) {
     const x = chartX + (t / maxT) * chartW;
     ctx.beginPath();
     ctx.moveTo(x, chartY);
     ctx.lineTo(x, chartY + chartH);
     ctx.stroke();
   }
+
+  // process blocks
   state.blocks.forEach((b) => {
+    if (b.pid === "IDLE") return;
     const p = state.processes.find((pp) => pp.pid === b.pid);
     const x1 = chartX + (b.start / maxT) * chartW;
     const x2 = chartX + (b.end / maxT) * chartW;
-    roundRect(ctx, x1, chartY + 6, Math.max(2, x2 - x1), chartH - 12, 8, shade(p.color, 0.18), p.color);
+    const width = Math.max(3, x2 - x1);
+    roundRect(ctx, x1, chartY + 6, width, chartH - 12, 8, shade(p.color, 0.18), p.color);
     text(p.pid, x1 + 6, chartY + chartH / 2 + 4, 12, "#0b1020");
   });
-  text(Clock: ${state.clock}, chartX, chartY + chartH + 16, 13, "#9fb0ff");
-}
-// UI + EVENT HANDLERS
-const tableBody = document.querySelector("tbody");
-function addRow(pid, arrival, burst, priority) {
-  const tr = document.createElement("tr");
-  tr.innerHTML = `
-  <td>${pid}</td>
-  <td contenteditable="true">${arrival}</td>
-  <td contenteditable="true">${burst}</td>
-  <td contenteditable="true">${priority}</td>`;
-  tableBody.appendChild(tr);
-}
-byId("btnAdd").addEventListener("click", () => {
-  const n = tableBody.querySelectorAll("tr").length;
-  addRow(P${n + 1}, n * 2, 5, 1);
-});
-byId("btnClear").addEventListener("click", () => (tableBody.innerHTML = ""));
-byId("btnBuild").addEventListener("click", () => initEngine());
-byId("btnPlay").addEventListener("click", () => { if (!state) return; playing = true; playLoop(); });
-byId("btnPause").addEventListener("click", () => { playing = false; cancelAnimationFrame(rafId); });
-byId("btnStep").addEventListener("click", () => { playing = false; if (!state) return; stepTick(state);
-  draw(); updateStats(); });
-byId("btnStepBack").addEventListener("click", () => { playing = false; stepBack(); });
-byId("btnReset").addEventListener("click", () => { playing = false; initEngine(); });
-// LOG + STATS
-function logMsg(msg) {
-  // state may be null at very early stages; guard
-  const clock = state ? state.clock : 0;
-  const box = byId("log");
-  box.textContent += t=${clock}: ${msg}\n;
-  box.scrollTop = box.scrollHeight;
-}
-function logClear() { byId("log").textContent = ""; }
 
+  // idle blocks
+  state.blocks.forEach((b) => {
+    if (b.pid !== "IDLE") return;
+    const x1 = chartX + (b.start / maxT) * chartW;
+    const x2 = chartX + (b.end / maxT) * chartW;
+    const width = Math.max(6, x2 - x1);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#b0baff";
+    ctx.fillStyle = "rgba(180,190,255,0.2)";
+    ctx.fillRect(x1, chartY + 2, width, chartH - 4);
+    ctx.strokeRect(x1, chartY + 2, width, chartH - 4);
+    text("IDLE", x1 + width / 4, chartY + chartH / 2 + 4, 11, "#ccd5ff");
+  });
+
+  text(`Clock: ${state.clock}`, chartX, chartY + chartH + 16, 13, "#9fb0ff");
+}
+
+// ---------------------------------------------------------------
+// UTILITIES + LOGGING
+// ---------------------------------------------------------------
+function totalBurst() {
+  return state.processes.reduce((s, p) => s + p.burst, 0);
+}
+function maxArrival() {
+  return Math.max(...state.processes.map((p) => p.arrival));
+}
 function computeStats(s) {
-  // Guard: missing or invalid state
-  if (!s || !s.processes) return { awt: 0, atat: 0, throughput: 0, cpuUtil: 0 };
-
-  // Build per-process completion record using blocks (last block end is completion)
   const completed = s.blocks.reduce((acc, b) => {
-    // find process metadata
+    if (b.pid === "IDLE") return acc;
     const p = s.processes.find((x) => x.pid === b.pid);
-    if (!p) return acc;
-    if (!acc[p.pid]) acc[p.pid] = { start: b.start, end: b.end, burst: p.burst, arrival: p.arrival };
-    else acc[p.pid].end = b.end; // update to last finishing time
+    if (!acc[p.pid]) acc[p.pid] = { start: b.start, end: b.end, burst: p.burst };
+    else acc[p.pid].end = b.end;
     return acc;
   }, {});
-
-  const pids = Object.keys(completed);
-  const count = pids.length;
-  if (count === 0 || s.clock === 0) return { awt: 0, atat: 0, throughput: 0, cpuUtil: 0 };
-
-  let totalWT = 0, totalTAT = 0, sumBurst = 0;
-  for (const pid of pids) {
-    const c = completed[pid];
-    const tat = c.end - c.arrival;        // turnaround time for this process
-    const wt = tat - c.burst;            // waiting time for this process
-    totalTAT += tat;
-    totalWT += wt;
-    sumBurst += c.burst;
+  const c = Object.keys(completed).length;
+  if (c === 0) return { awt: 0, atat: 0, throughput: 0, cpuUtil: 0 };
+  let twt = 0, ttat = 0, tburst = 0;
+  for (const pid in completed) {
+    const x = completed[pid];
+    const arr = s.processes.find((p) => p.pid === pid).arrival;
+    ttat += x.end - arr;
+    twt += ttat - x.burst;
+    tburst += x.burst;
   }
-
-  return {
-    awt: totalWT / count,
-    atat: totalTAT / count,
-    throughput: count / s.clock,
-    cpuUtil: (sumBurst / s.clock) * 100,
-  };
+  return { awt: twt / c, atat: ttat / c, throughput: c / s.clock, cpuUtil: (tburst / s.clock) * 100 };
 }
-
 function updateStats() {
-  if (!state) {
-    byId("statAWT").textContent = "—";
-    byId("statATAT").textContent = "—";
-    byId("statTH").textContent = "—";
-    byId("statCPU").textContent = "—";
-    return;
-  }
   const s = computeStats(state);
   byId("statAWT").textContent = s.awt.toFixed(2);
   byId("statATAT").textContent = s.atat.toFixed(2);
   byId("statTH").textContent = s.throughput.toFixed(2) + "/t";
   byId("statCPU").textContent = s.cpuUtil.toFixed(1) + "%";
 }
+function logMsg(m) {
+  const box = byId("log");
+  box.textContent += `t=${state.clock}: ${m}\n`;
+  box.scrollTop = box.scrollHeight;
+}
+function logClear() { byId("log").textContent = ""; }
+
+// ---------------------------------------------------------------
 // DRAW HELPERS
+// ---------------------------------------------------------------
 function roundRect(c, x, y, w, h, r, fill, stroke) {
   c.fillStyle = fill; c.strokeStyle = stroke;
-  c.beginPath(); c.moveTo(x + r, y);
+  c.beginPath();
+  c.moveTo(x + r, y);
   c.arcTo(x + w, y, x + w, y + h, r);
   c.arcTo(x + w, y + h, x, y + h, r);
   c.arcTo(x, y + h, x, y, r);
   c.arcTo(x, y, x + w, y, r);
-  c.closePath(); c.fill(); c.stroke();
+  c.closePath();
+  c.fill();
+  c.stroke();
 }
 function text(t, x, y, size, color) {
   ctx.fillStyle = color;
-  ctx.font = ${size}px ui-sans-serif;
+  ctx.font = `${size}px ui-sans-serif`;
   ctx.fillText(t, x, y);
 }
 function shade(hex, amt) {
-  const c = parseInt(hex.slice(1), 16),
-    r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
-  const fn = (v) => Math.max(0, Math.min(255, Math.round(v + amt * 255)));
-  return rgb(${fn(r)},${fn(g)},${fn(b)});
+  const c = parseInt(hex.slice(1), 16);
+  const r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+  const f = (v) => Math.max(0, Math.min(255, Math.round(v + amt * 255)));
+  return `rgb(${f(r)},${f(g)},${f(b)})`;
 }
 function randColor() {
-  const colors = ["#4fc3f7", "#81c784", "#ba68c8", "#ffb74d", "#e57373"];
-  return colors[Math.floor(Math.random() * colors.length)];
+  const arr = ["#4fc3f7", "#81c784", "#ba68c8", "#ffb74d", "#e57373"];
+  return arr[Math.floor(Math.random() * arr.length)];
 }
-// INITIAL SETUP
-addRow("P1", 0, 5, 1);
-addRow("P2", 2, 5, 1);
-addRow("P3", 4, 5, 1);
+
+// ---------------------------------------------------------------
+// BUTTONS
+// ---------------------------------------------------------------
+const tableBody = document.querySelector("tbody");
+function addRow(pid, a, b, pr) {
+  const tr = document.createElement("tr");
+  tr.innerHTML = `<td>${pid}</td><td contenteditable="true">${a}</td><td contenteditable="true">${b}</td><td contenteditable="true">${pr}</td>`;
+  tableBody.appendChild(tr);
+}
+byId("btnAdd").onclick = () => {
+  const n = tableBody.querySelectorAll("tr").length;
+  addRow(`P${n + 1}`, n * 2, 5, 1);
+};
+byId("btnClear").onclick = () => (tableBody.innerHTML = "");
+byId("btnBuild").onclick = () => initEngine();
+byId("btnPlay").onclick = () => { if (!state) return; playing = true; playLoop(); };
+byId("btnPause").onclick = () => { playing = false; cancelAnimationFrame(rafId); };
+byId("btnStep").onclick = () => { playing = false; if (!state) return; stepTick(state); draw(); updateStats(); };
+byId("btnStepBack").onclick = () => { playing = false; stepBack(); };
+byId("btnReset").onclick = () => { playing = false; initEngine(); };
+byId("btnExportPNG").onclick = () => {
+  const a = document.createElement("a");
+  a.href = canvas.toDataURL("image/png");
+  a.download = "rr_screenshot.png";
+  a.click();
+};
+byId("btnExportCSV").onclick = () => {
+  const rows = ["time,event,pid"];
+  state.trace.forEach((t) => rows.push(`${t.time},${t.event},${t.pid}`));
+  const blob = new Blob([rows.join("\n")], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "rr_trace.csv";
+  a.click();
+};
+
+// Default demo
+addRow("P1", 0, 3, 1);
+addRow("P2", 5, 2, 1);
+addRow("P3", 8, 4, 1);
